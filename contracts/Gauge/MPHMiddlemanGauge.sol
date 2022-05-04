@@ -40,10 +40,11 @@ contract MPHMiddlemanGauge is Owned, ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for ERC20;
 
+    address public constant reward_token_address = 0x8888801aF4d980682e47f1A9036e589479e835C5; // MPH
+
     /* ========== STATE VARIABLES ========== */
 
     // Instances and addresses
-    address public reward_token_address = 0x3432B6A60D23Ca0dFCa7761B7ab56459D9C964D0; // FXS
     address public rewards_distributor_address;
 
     // Informational
@@ -52,14 +53,14 @@ contract MPHMiddlemanGauge is Owned, ReentrancyGuard {
     // Admin addresses
     address public timelock_address;
 
-    // Gauge-related
-    address public bridge_address;
-    uint256 public bridge_type;
-    address public destination_address_override;
-    string public non_evm_destination_address;
-
     // Tracking
     uint32 public fake_nonce;
+
+    // Gauge-related
+    uint32 public bridge_type;
+    address public bridge_address;
+    address public destination_address_override;
+    string public non_evm_destination_address;
 
     /* ========== MODIFIERS ========== */
 
@@ -80,7 +81,7 @@ contract MPHMiddlemanGauge is Owned, ReentrancyGuard {
         address _timelock_address,
         address _rewards_distributor_address,
         address _bridge_address,
-        uint256 _bridge_type,
+        uint32 _bridge_type,
         address _destination_address_override,
         string memory _non_evm_destination_address,
         string memory _name
@@ -198,7 +199,7 @@ contract MPHMiddlemanGauge is Owned, ReentrancyGuard {
         timelock_address = _new_timelock;
     }
 
-    function setBridgeInfo(address _bridge_address, uint256 _bridge_type, address _destination_address_override, string memory _non_evm_destination_address) external onlyByOwnGov {
+    function setBridgeInfo(address _bridge_address, uint32 _bridge_type, address _destination_address_override, string memory _non_evm_destination_address) external onlyByOwnGov {
         bridge_address = _bridge_address;
         
         // 0: Avalanche

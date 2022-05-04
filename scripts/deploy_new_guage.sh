@@ -4,6 +4,6 @@ if [$1 == 'mainnet']; then
 else 
     node scripts/generate_new_wallet.js
 
-    npx hardhat deploy --tags MPHMiddlemanGuage --network mainnet
+    npx hardhat deploy --tags MPHMiddlemanGauge --network mainnet
     npx hardhat deploy --tags MPHCrossChainRewarder --network $1
 fi

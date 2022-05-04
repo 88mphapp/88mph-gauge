@@ -40,7 +40,7 @@ contract MPHGaugeRewardsDistributor is Owned, ReentrancyGuard {
     /* ========== STATE VARIABLES ========== */
 
     // Instances and addresses
-    address public reward_token_address;
+    address public immutable reward_token_address;
     IMPHGaugeController public gauge_controller;
 
     // Admin addresses

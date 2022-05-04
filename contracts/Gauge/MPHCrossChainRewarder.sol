@@ -39,7 +39,7 @@ contract MPHCrossChainRewarder is Owned, ReentrancyGuard {
     /* ========== STATE VARIABLES ========== */
 
     // Instances and addresses
-    address public reward_token_address;
+    address public immutable reward_token_address;
 
     // Admin addresses
     address public timelock_address;
