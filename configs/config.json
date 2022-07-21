@@ -1,11 +1,11 @@
 {
-    "owner" : "0xACD29F2ef7155C9884D2371B208196f1d496B881",
-    "mphToken" : "0x0000000000000000000000000000000000000000",
-    "timelock" : "",
-    "curator" : "0x0000000000000000000000000000000000000000",
+    "owner" : "0x56f34826Cc63151f74FA8f701E4f73C5EAae52AD",
+    "mphToken" : "0x3E09E828c716c5e2BC5034EeD7d5eC8677ffba18",
+    "timelock" : "0x90523c113517A59f6BEBC123b75612Aea9FD3140",
+    "curator" : "0xfecBad5D60725EB6fd10f8936e02fa203fd27E4b",
     "veMPH" : {
-        "name" : "",
-        "symbol" : "",
-        "version" : ""
+        "name" : "Vote-escrowed MPH",
+        "symbol" : "veMPH",
+        "version" : "veMPH_1.0.0"
     }
 }

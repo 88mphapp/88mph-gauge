@@ -34,5 +34,5 @@ module.exports = async ({ deployments, getNamedAccounts, getChainId}) => {
   
 };
 
-module.exports.tags = [gaugeConfig.name, "MPHMiddlemanGauge"];
+module.exports.tags = ["MPHMiddlemanGauge"];
 module.exports.dependencies = ['MPHGaugeRewardsDistributor'];

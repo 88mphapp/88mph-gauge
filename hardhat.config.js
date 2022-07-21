@@ -12,10 +12,7 @@ let secret;
 try {
   secret = require("./secret.json");
 } catch {
-  secret = {
-    account: "",
-    mnemonic: ""
-  };
+  secret = "";
 }
 
 // You need to export an object to set up your config
@@ -76,52 +73,45 @@ module.exports = {
   },
   namedAccounts: {
     deployer: {
-      default: 1,
+      default: 0,
     },
 
   },
   networks: {
+    hardhat: {
+      forking: {
+        url: "http://erigon.dappnode:8545"
+      },
+      accounts: [{
+        privateKey: secret,
+        balance: 100e18.toString()
+      }]
+    },
     mainnet: {
-      url: "https://mainnet.infura.io/v3/<YOUR ALCHEMY KEY>",
+      url: "http://erigon.dappnode:8545",
       chainId: 1,
-      from: secret.account,
-      accounts: {
-        mnemonic: secret.mnemonic
-      }
+      accounts: [secret]
     },
     rinkeby: {
       url:
-        "https://eth-rinkeby.alchemyapi.io/v2/<YOUR ALCHEMY KEY>",
+        "https://eth-rinkeby.alchemyapi.io/v2/2LxgvUYd5FzgiXVoAWlq-KyM4v-E7KJ4",
       chainId: 4,
-      from: secret.account,
-      accounts: {
-        mnemonic: secret.mnemonic
-      }
+      accounts: [secret]
     },
     polygon: {
       url: "https://polygon-rpc.com",
       chainId: 137,
-      from: secret.account,
-      accounts: {
-        mnemonic: secret.mnemonic
-      },
-      gasPrice: 3.5e9
+      accounts: [secret]
     },
     avalanche: {
       url: "https://api.avax.network/ext/bc/C/rpc",
       chainId: 43114,
-      from: secret.account,
-      accounts: {
-        mnemonic: secret.mnemonic
-      }
+      accounts: [secret]
     },
     fantom: {
       url: "https://rpc.ftm.tools",
       chainId: 250,
-      from: secret.account,
-      accounts: {
-        mnemonic: secret.mnemonic
-      }
+      accounts: [secret]
     }
   },
   gasReporter: {

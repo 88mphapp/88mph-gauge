@@ -5,6 +5,6 @@
         "bridgeAddress" : "",
         "bridgeType": 1,
         "destinationAddress": "",
-        "nonEVMDestination" : "",
+        "nonEVMDestination" : ""
     }
 }
