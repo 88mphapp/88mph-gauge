@@ -9,7 +9,7 @@ module.exports = async ({ deployments, getNamedAccounts, getChainId }) => {
         from: deployer,
         log: true,
         args: [
-            config.mphToken,
+            config.mphBPT,
             config.veMPH.name,
             config.veMPH.symbol,
             config.veMPH.version,

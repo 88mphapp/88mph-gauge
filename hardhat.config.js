@@ -80,7 +80,7 @@ module.exports = {
   networks: {
     hardhat: {
       forking: {
-        url: "http://erigon.dappnode:8545"
+        url: "https://eth-mainnet.g.alchemy.com/v2/pvGDp1uf8J7QZ7MXpLhYs_SnMnsE0TY5"
       },
       accounts: [{
         privateKey: secret,
@@ -88,7 +88,7 @@ module.exports = {
       }]
     },
     mainnet: {
-      url: "http://erigon.dappnode:8545",
+      url: "https://eth-mainnet.g.alchemy.com/v2/pvGDp1uf8J7QZ7MXpLhYs_SnMnsE0TY5",
       chainId: 1,
       accounts: [secret]
     },

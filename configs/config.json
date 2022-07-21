@@ -1,6 +1,7 @@
 {
     "owner" : "0x56f34826Cc63151f74FA8f701E4f73C5EAae52AD",
-    "mphToken" : "0x3E09E828c716c5e2BC5034EeD7d5eC8677ffba18",
+    "mphToken" : "0x8888801aF4d980682e47f1A9036e589479e835C5",
+    "mphBPT": "0x3E09E828c716c5e2BC5034EeD7d5eC8677ffba18",
     "timelock" : "0x90523c113517A59f6BEBC123b75612Aea9FD3140",
     "curator" : "0xfecBad5D60725EB6fd10f8936e02fa203fd27E4b",
     "veMPH" : {

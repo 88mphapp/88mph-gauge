@@ -11,7 +11,7 @@ module.exports = async ({ deployments, getNamedAccounts, getChainId }) => {
     const deployResult = await deploy("MPHGaugeController", {
         from: deployer,
         log: true,
-        args: [config.mphToken, votingEscrow.address],
+        args: [config.mphBPT, votingEscrow.address],
     });
 
     if (deployResult.newlyDeployed) {
