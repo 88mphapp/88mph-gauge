@@ -1,36 +1,10 @@
-# @version 0.2.12
-
+# @version 0.3.4
 """
 @title Gauge Controller
 @author Curve Finance
 @license MIT
 @notice Controls liquidity gauges and the issuance of coins through the gauges
 """
-
-# ====================================================================
-# |     ______                   _______                             |
-# |    / _____________ __  __   / ____(_____  ____ _____  ________   |
-# |   / /_  / ___/ __ `| |/_/  / /_  / / __ \/ __ `/ __ \/ ___/ _ \  |
-# |  / __/ / /  / /_/ _>  <   / __/ / / / / / /_/ / / / / /__/  __/  |
-# | /_/   /_/   \__,_/_/|_|  /_/   /_/_/ /_/\__,_/_/ /_/\___/\___/   |
-# |                                                                  |
-# ====================================================================
-# ======================== FraxGaugeController =======================
-# ====================================================================
-# Frax Finance: https://github.com/FraxFinance
-
-# Original idea and credit:
-# Curve Finance's Gauge Controller
-# https://resources.curve.fi/base-features/understanding-gauges
-# https://github.com/curvefi/curve-dao-contracts/blob/master/contracts/GaugeController.vy
-# This contract is an almost-identical fork of Curve's contract
-# veFXS is used instead of veCRV. 
-
-# Frax Reviewer(s) / Contributor(s)
-# Travis Moore: https://github.com/FortisFortuna
-# Jason Huan: https://github.com/jasonhuan
-# Sam Kazemian: https://github.com/samkazemian
-
 
 # 7 * 86400 seconds - all future times are rounded by week
 WEEK: constant(uint256) = 604800
@@ -50,15 +24,9 @@ struct VotedSlope:
 
 
 interface VotingEscrow:
+    def token() -> address: view
     def get_last_user_slope(addr: address) -> int128: view
     def locked__end(addr: address) -> uint256: view
-
-
-event CommitOwnership:
-    admin: address
-
-event ApplyOwnership:
-    admin: address
 
 event AddType:
     name: String[64]
@@ -90,11 +58,9 @@ event NewGauge:
 
 MULTIPLIER: constant(uint256) = 10 ** 18
 
-admin: public(address)  # Can and will be a smart contract
-future_admin: public(address)  # Can and will be a smart contract
-
-token: public(address)  # CRV token
-voting_escrow: public(address)  # Voting escrow
+TOKEN: immutable(address) # The token to escrow
+VOTING_ESCROW: immutable(address) # Voting escrow
+ADMIN: immutable(address)
 
 # Gauge parameters
 # All numbers are "fixed point" on the basis of 1e18
@@ -133,46 +99,47 @@ time_total: public(uint256)  # last scheduled time
 points_type_weight: public(HashMap[int128, HashMap[uint256, uint256]])  # type_id -> time -> type weight
 time_type_weight: public(uint256[1000000000])  # type_id -> last scheduled time (next week)
 
-global_emission_rate: public(uint256)  # inflation rate
 
 @external
-def __init__(_token: address, _voting_escrow: address):
+def __init__(_voting_escrow: address, _admin: address):
     """
     @notice Contract constructor
-    @param _token `ERC-20 FXS` contract address
     @param _voting_escrow `VotingEscrow` contract address
+    @param _admin The admin address
     """
-    assert _token != ZERO_ADDRESS
-    assert _voting_escrow != ZERO_ADDRESS
+    assert _voting_escrow != empty(address)
+    assert _admin != empty(address)
 
-    self.admin = msg.sender
-    self.token = _token
-    self.voting_escrow = _voting_escrow
+    TOKEN = VotingEscrow(_voting_escrow).token()
+    VOTING_ESCROW = _voting_escrow
+    ADMIN = _admin
     self.time_total = block.timestamp / WEEK * WEEK
 
+@external
+@view
+def token() -> address:
+    return TOKEN
 
 @external
-def commit_transfer_ownership(addr: address):
-    """
-    @notice Transfer ownership of GaugeController to `addr`
-    @param addr Address to have ownership transferred to
-    """
-    assert msg.sender == self.admin  # dev: admin only
-    self.future_admin = addr
-    log CommitOwnership(addr)
-
+@view
+def voting_escrow() -> address:
+    return VOTING_ESCROW
 
 @external
-def apply_transfer_ownership():
-    """
-    @notice Apply pending ownership transfer
-    """
-    assert msg.sender == self.admin  # dev: admin only
-    _admin: address = self.future_admin
-    assert _admin != ZERO_ADDRESS  # dev: admin not set
-    self.admin = _admin
-    log ApplyOwnership(_admin)
+@view
+def admin() -> address:
+    return ADMIN
 
+@external
+@view
+def gauge_exists(_addr: address) -> bool:
+    """
+    @notice Get whether gauge already exists on GaugeController
+    @param _addr Gauge address
+    @return true if the gauge exists
+    """
+    gauge_type: int128 = self.gauge_types_[_addr]
+    return gauge_type > 0
 
 @external
 @view
@@ -311,16 +278,16 @@ def _get_weight(gauge_addr: address) -> uint256:
     else:
         return 0
 
+
 @external
-def add_gauge(addr: address, gauge_type: int128, weight: uint256):
+def add_gauge(addr: address, gauge_type: int128, weight: uint256 = 0):
     """
     @notice Add gauge `addr` of type `gauge_type` with weight `weight`
     @param addr Gauge address
     @param gauge_type Gauge type
     @param weight Gauge weight
     """
-    assert msg.sender == self.admin
-    assert weight >= 0
+    assert msg.sender == ADMIN
     assert (gauge_type >= 0) and (gauge_type < self.n_gauge_types)
     assert self.gauge_types_[addr] == 0  # dev: cannot add the same gauge twice
 
@@ -374,7 +341,7 @@ def _gauge_relative_weight(addr: address, time: uint256) -> uint256:
     """
     @notice Get Gauge relative weight (not more than 1.0) normalized to 1e18
             (e.g. 1.0 == 1e18). Inflation which will be received by it is
-            global_emission_rate * relative_weight / 1e18
+            inflation_rate * relative_weight / 1e18
     @param addr Gauge address
     @param time Relative weight at the specified timestamp in the past or present
     @return Value of relative weight normalized to 1e18
@@ -398,7 +365,7 @@ def gauge_relative_weight(addr: address, time: uint256 = block.timestamp) -> uin
     """
     @notice Get Gauge relative weight (not more than 1.0) normalized to 1e18
             (e.g. 1.0 == 1e18). Inflation which will be received by it is
-            global_emission_rate * relative_weight / 1e18
+            inflation_rate * relative_weight / 1e18
     @param addr Gauge address
     @param time Relative weight at the specified timestamp in the past or present
     @return Value of relative weight normalized to 1e18
@@ -419,6 +386,8 @@ def gauge_relative_weight_write(addr: address, time: uint256 = block.timestamp) 
     self._get_weight(addr)
     self._get_total()  # Also calculates get_sum
     return self._gauge_relative_weight(addr, time)
+
+
 
 
 @internal
@@ -443,14 +412,13 @@ def _change_type_weight(type_id: int128, weight: uint256):
 
 
 @external
-def add_type(_name: String[64], weight: uint256):
+def add_type(_name: String[64], weight: uint256 = 0):
     """
     @notice Add gauge type with name `_name` and weight `weight`
     @param _name Name of gauge type
     @param weight Weight of gauge type
     """
-    assert msg.sender == self.admin
-    assert weight >= 0
+    assert msg.sender == ADMIN
     type_id: int128 = self.n_gauge_types
     self.gauge_type_names[type_id] = _name
     self.n_gauge_types = type_id + 1
@@ -466,7 +434,7 @@ def change_type_weight(type_id: int128, weight: uint256):
     @param type_id Gauge type id
     @param weight New Gauge weight
     """
-    assert msg.sender == self.admin
+    assert msg.sender == ADMIN
     self._change_type_weight(type_id, weight)
 
 
@@ -502,46 +470,45 @@ def change_gauge_weight(addr: address, weight: uint256):
     @param addr `GaugeController` contract address
     @param weight New Gauge weight
     """
-    assert msg.sender == self.admin
+    assert msg.sender == ADMIN
     self._change_gauge_weight(addr, weight)
 
-
-@external
-def vote_for_gauge_weights(_gauge_addr: address, _user_weight: uint256):
+@internal
+def _vote_for_gauge_weights(_user: address, _gauge_addr: address, _user_weight: uint256):
     """
     @notice Allocate voting power for changing pool weights
-    @param _gauge_addr Gauge which `msg.sender` votes for
+    @param _user User to allocate voting power for
+    @param _gauge_addr Gauge which _user votes for
     @param _user_weight Weight for a gauge in bps (units of 0.01%). Minimal is 0.01%. Ignored if 0
     """
-    escrow: address = self.voting_escrow
-    slope: uint256 = convert(VotingEscrow(escrow).get_last_user_slope(msg.sender), uint256)
-    lock_end: uint256 = VotingEscrow(escrow).locked__end(msg.sender)
+    slope: uint256 = convert(VotingEscrow(VOTING_ESCROW).get_last_user_slope(_user), uint256)
+    lock_end: uint256 = VotingEscrow(VOTING_ESCROW).locked__end(_user)
     _n_gauges: int128 = self.n_gauges
     next_time: uint256 = (block.timestamp + WEEK) / WEEK * WEEK
     assert lock_end > next_time, "Your token lock expires too soon"
     assert (_user_weight >= 0) and (_user_weight <= 10000), "You used all your voting power"
-    assert block.timestamp >= self.last_user_vote[msg.sender][_gauge_addr] + WEIGHT_VOTE_DELAY, "Cannot vote so often"
+    assert block.timestamp >= self.last_user_vote[_user][_gauge_addr] + WEIGHT_VOTE_DELAY, "Cannot vote so often"
 
     gauge_type: int128 = self.gauge_types_[_gauge_addr] - 1
     assert gauge_type >= 0, "Gauge not added"
     # Prepare slopes and biases in memory
-    old_slope: VotedSlope = self.vote_user_slopes[msg.sender][_gauge_addr]
+    old_slope: VotedSlope = self.vote_user_slopes[_user][_gauge_addr]
     old_dt: uint256 = 0
     if old_slope.end > next_time:
         old_dt = old_slope.end - next_time
     old_bias: uint256 = old_slope.slope * old_dt
     new_slope: VotedSlope = VotedSlope({
         slope: slope * _user_weight / 10000,
-        end: lock_end,
-        power: _user_weight
+        power: _user_weight,
+        end: lock_end
     })
     new_dt: uint256 = lock_end - next_time  # dev: raises when expired
     new_bias: uint256 = new_slope.slope * new_dt
 
     # Check and update powers (weights) used
-    power_used: uint256 = self.vote_user_power[msg.sender]
+    power_used: uint256 = self.vote_user_power[_user]
     power_used = power_used + new_slope.power - old_slope.power
-    self.vote_user_power[msg.sender] = power_used
+    self.vote_user_power[_user] = power_used
     assert (power_used >= 0) and (power_used <= 10000), 'Used too much power'
 
     ## Remove old and schedule new slope changes
@@ -570,13 +537,24 @@ def vote_for_gauge_weights(_gauge_addr: address, _user_weight: uint256):
 
     self._get_total()
 
-    self.vote_user_slopes[msg.sender][_gauge_addr] = new_slope
+    self.vote_user_slopes[_user][_gauge_addr] = new_slope
 
     # Record last action time
-    self.last_user_vote[msg.sender][_gauge_addr] = block.timestamp
+    self.last_user_vote[_user][_gauge_addr] = block.timestamp
 
-    log VoteForGauge(block.timestamp, msg.sender, _gauge_addr, _user_weight)
+    log VoteForGauge(block.timestamp, _user, _gauge_addr, _user_weight)
 
+@external
+@nonreentrant('lock')
+def vote_for_many_gauge_weights(_gauge_addrs: address[8], _user_weight: uint256[8]):
+    for i in range(8):
+        if _gauge_addrs[i] == empty(address):
+            break
+        self._vote_for_gauge_weights(msg.sender, _gauge_addrs[i], _user_weight[i])
+
+@external
+def vote_for_gauge_weights(_gauge_addr: address, _user_weight: uint256):
+    self._vote_for_gauge_weights(msg.sender, _gauge_addr, _user_weight)
 
 @external
 @view
@@ -619,12 +597,3 @@ def get_weights_sum_per_type(type_id: int128) -> uint256:
     @return Sum of gauge weights
     """
     return self.points_sum[type_id][self.time_sum[type_id]].bias
-
-@external
-def change_global_emission_rate(new_rate: uint256):
-    """
-    @notice Change FXS emission rate
-    @param new_rate new emission rate (FXS per second)
-    """
-    assert msg.sender == self.admin
-    self.global_emission_rate = new_rate

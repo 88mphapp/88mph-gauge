@@ -1,4 +1,4 @@
-# @version 0.2.12
+# @version 0.3.4
 """
 @title Voting Escrow
 @author Curve Finance
@@ -6,32 +6,8 @@
 @notice Votes have a weight depending on time, so that users are
         committed to the future of (whatever they are voting for)
 @dev Vote weight decays linearly over time. Lock time cannot be
-     more than `MAXTIME` (4 years).
+     more than `MAXTIME` (1 year).
 """
-
-# ====================================================================
-# |     ______                   _______                             |
-# |    / _____________ __  __   / ____(_____  ____ _____  ________   |
-# |   / /_  / ___/ __ `| |/_/  / /_  / / __ \/ __ `/ __ \/ ___/ _ \  |
-# |  / __/ / /  / /_/ _>  <   / __/ / / / / / /_/ / / / / /__/  __/  |
-# | /_/   /_/   \__,_/_/|_|  /_/   /_/_/ /_/\__,_/_/ /_/\___/\___/   |
-# |                                                                  |
-# ====================================================================
-# =============================== veFXS ==============================
-# ====================================================================
-# Frax Finance: https://github.com/FraxFinance
-
-# Original idea and credit:
-# Curve Finance's veCRV
-# https://resources.curve.fi/faq/vote-locking-boost
-# https://github.com/curvefi/curve-dao-contracts/blob/master/contracts/VotingEscrow.vy
-# veFXS is basically a fork, with the key difference that 1 FXS locked for 1 second would be ~ 1 veFXS,
-# As opposed to ~ 0 veFXS (as it is with veCRV)
-
-# Frax Reviewer(s) / Contributor(s)
-# Travis Moore: https://github.com/FortisFortuna
-# Jason Huan: https://github.com/jasonhuan
-# Sam Kazemian: https://github.com/samkazemian
 
 # Voting escrow to have time-weighted votes
 # Votes have a weight depending on time, so that users are committed
@@ -44,14 +20,13 @@
 #   |  /
 #   |/
 # 0 +--------+------> time
-#       maxtime (4 years?)
+#       maxtime (1 year?)
 
 struct Point:
     bias: int128
     slope: int128  # - dweight / dt
     ts: uint256
     blk: uint256  # block
-    fxs_amt: uint256
 # We cannot really do block numbers per se b/c slope is per time, not per block
 # and per block could be fairly bad b/c Ethereum changes blocktimes.
 # What we can do is to extrapolate ***At functions
@@ -60,9 +35,9 @@ struct LockedBalance:
     amount: int128
     end: uint256
 
+
 interface ERC20:
     def decimals() -> uint256: view
-    def balanceOf(addr: address) -> uint256: view
     def name() -> String[64]: view
     def symbol() -> String[32]: view
     def transfer(to: address, amount: uint256) -> bool: nonpayable
@@ -82,12 +57,6 @@ CREATE_LOCK_TYPE: constant(int128) = 1
 INCREASE_LOCK_AMOUNT: constant(int128) = 2
 INCREASE_UNLOCK_TIME: constant(int128) = 3
 
-event CommitOwnership:
-    admin: address
-
-event ApplyOwnership:
-    admin: address
-
 event Deposit:
     provider: indexed(address)
     value: uint256
@@ -104,25 +73,19 @@ event Supply:
     prevSupply: uint256
     supply: uint256
 
-event SmartWalletCheckerComitted:
-    future_smart_wallet_checker: address
-
-event SmartWalletCheckerApplied:
-    smart_wallet_checker: address
-
-event EmergencyUnlockToggled:
-    emergencyUnlockActive: bool
-
 
 WEEK: constant(uint256) = 7 * 86400  # all future times are rounded by week
 MAXTIME: constant(uint256) = 4 * 365 * 86400  # 4 years
 MULTIPLIER: constant(uint256) = 10 ** 18
 
-VOTE_WEIGHT_MULTIPLIER: constant(uint256) = 4 - 1 # 4x gives 300% boost at 4 years
+TOKEN: immutable(address)
+ADMIN: immutable(address)
 
-token: public(address)
+NAME: immutable(String[64])
+SYMBOL: immutable(String[32])
+DECIMALS: immutable(uint256)
+
 supply: public(uint256)
-
 locked: public(HashMap[address, LockedBalance])
 
 epoch: public(uint256)
@@ -131,76 +94,59 @@ user_point_history: public(HashMap[address, Point[1000000000]])  # user -> Point
 user_point_epoch: public(HashMap[address, uint256])
 slope_changes: public(HashMap[uint256, int128])  # time -> signed slope change
 
-# Aragon's view methods for compatibility
-controller: public(address)
-transfersEnabled: public(bool)
-
-# Emergency Unlock
-emergencyUnlockActive: public(bool)
-
-# ERC20 related
-name: public(String[64])
-symbol: public(String[32])
-version: public(String[32])
-decimals: public(uint256)
-
 # Checker for whitelisted (smart contract) wallets which are allowed to deposit
 # The goal is to prevent tokenizing the escrow
 future_smart_wallet_checker: public(address)
 smart_wallet_checker: public(address)
 
-admin: public(address)  # Can and will be a smart contract
-future_admin: public(address)
-
 
 @external
-def __init__(token_addr: address, _name: String[64], _symbol: String[32], _version: String[32]):
+def __init__(token_addr: address, _name: String[64], _symbol: String[32], _admin: address):
     """
     @notice Contract constructor
-    @param token_addr `ERC20CRV` token address
+    @param token_addr The token to escrow
     @param _name Token name
     @param _symbol Token symbol
-    @param _version Contract version - required for Aragon compatibility
+    @param _admin The admin address
     """
-    self.admin = msg.sender
-    self.token = token_addr
+    assert _admin != empty(address)
+
+    TOKEN = token_addr
+    ADMIN = _admin
     self.point_history[0].blk = block.number
     self.point_history[0].ts = block.timestamp
-    self.point_history[0].fxs_amt = 0
-    self.controller = msg.sender
-    self.transfersEnabled = True
 
     _decimals: uint256 = ERC20(token_addr).decimals()
     assert _decimals <= 255
-    self.decimals = _decimals
 
-    self.name = _name
-    self.symbol = _symbol
-    self.version = _version
-
+    NAME = _name
+    SYMBOL = _symbol
+    DECIMALS = _decimals
 
 @external
-def commit_transfer_ownership(addr: address):
-    """
-    @notice Transfer ownership of VotingEscrow contract to `addr`
-    @param addr Address to have ownership transferred to
-    """
-    assert msg.sender == self.admin  # dev: admin only
-    self.future_admin = addr
-    log CommitOwnership(addr)
-
+@view
+def token() -> address:
+    return TOKEN
 
 @external
-def apply_transfer_ownership():
-    """
-    @notice Apply ownership transfer
-    """
-    assert msg.sender == self.admin  # dev: admin only
-    _admin: address = self.future_admin
-    assert _admin != ZERO_ADDRESS  # dev: admin not set
-    self.admin = _admin
-    log ApplyOwnership(_admin)
+@view
+def name() -> String[64]:
+    return NAME
 
+@external
+@view
+def symbol() -> String[32]:
+    return SYMBOL
+
+@external
+@view
+def decimals() -> uint256:
+    return DECIMALS
+
+@external
+@view
+def admin() -> address:
+    return ADMIN
 
 @external
 def commit_smart_wallet_checker(addr: address):
@@ -208,10 +154,8 @@ def commit_smart_wallet_checker(addr: address):
     @notice Set an external contract to check for approved smart contract wallets
     @param addr Address of Smart contract checker
     """
-    assert msg.sender == self.admin
+    assert msg.sender == ADMIN
     self.future_smart_wallet_checker = addr
-
-    log SmartWalletCheckerComitted(self.future_smart_wallet_checker)
 
 
 @external
@@ -219,29 +163,9 @@ def apply_smart_wallet_checker():
     """
     @notice Apply setting external contract to check approved smart contract wallets
     """
-    assert msg.sender == self.admin
+    assert msg.sender == ADMIN
     self.smart_wallet_checker = self.future_smart_wallet_checker
 
-    log SmartWalletCheckerApplied(self.smart_wallet_checker)
-
-@external
-def toggleEmergencyUnlock():
-    """
-    @dev Used to allow early withdrawals of veFXS back into FXS, in case of an emergency
-    """
-    assert msg.sender == self.admin  # dev: admin only
-    self.emergencyUnlockActive = not (self.emergencyUnlockActive)
-
-    log EmergencyUnlockToggled(self.emergencyUnlockActive)
-
-@external
-def recoverERC20(token_addr: address, amount: uint256):
-    """
-    @dev Used to recover non-FXS ERC20 tokens
-    """
-    assert msg.sender == self.admin  # dev: admin only
-    assert token_addr != self.token  # Cannot recover FXS. Use toggleEmergencyUnlock instead and have users pull theirs out individually
-    ERC20(token_addr).transfer(self.admin, amount)
 
 @internal
 def assert_not_contract(addr: address):
@@ -251,10 +175,11 @@ def assert_not_contract(addr: address):
     """
     if addr != tx.origin:
         checker: address = self.smart_wallet_checker
-        if checker != ZERO_ADDRESS:
+        if checker != empty(address):
             if SmartWalletChecker(checker).check(addr):
                 return
         raise "Smart contract depositors not allowed"
+
 
 @external
 @view
@@ -305,14 +230,14 @@ def _checkpoint(addr: address, old_locked: LockedBalance, new_locked: LockedBala
     new_dslope: int128 = 0
     _epoch: uint256 = self.epoch
 
-    if addr != ZERO_ADDRESS:
+    if addr != empty(address):
         # Calculate slopes and biases
         # Kept at zero when they have to
         if old_locked.end > block.timestamp and old_locked.amount > 0:
-            u_old.slope = old_locked.amount / MAXTIME
+            u_old.slope = old_locked.amount / convert(MAXTIME, int128)
             u_old.bias = u_old.slope * convert(old_locked.end - block.timestamp, int128)
         if new_locked.end > block.timestamp and new_locked.amount > 0:
-            u_new.slope = new_locked.amount / MAXTIME
+            u_new.slope = new_locked.amount / convert(MAXTIME, int128)
             u_new.bias = u_new.slope * convert(new_locked.end - block.timestamp, int128)
 
         # Read values of scheduled changes in the slope
@@ -325,11 +250,9 @@ def _checkpoint(addr: address, old_locked: LockedBalance, new_locked: LockedBala
             else:
                 new_dslope = self.slope_changes[new_locked.end]
 
-    last_point: Point = Point({bias: 0, slope: 0, ts: block.timestamp, blk: block.number, fxs_amt: 0})
+    last_point: Point = Point({bias: 0, slope: 0, ts: block.timestamp, blk: block.number})
     if _epoch > 0:
         last_point = self.point_history[_epoch]
-    else:
-        last_point.fxs_amt = ERC20(self.token).balanceOf(self) # saves gas by only calling once
     last_checkpoint: uint256 = last_point.ts
     # initial_last_point is used for extrapolation to calculate block number
     # (approximately, for *At methods) and save them
@@ -362,11 +285,8 @@ def _checkpoint(addr: address, old_locked: LockedBalance, new_locked: LockedBala
         last_point.ts = t_i
         last_point.blk = initial_last_point.blk + block_slope * (t_i - initial_last_point.ts) / MULTIPLIER
         _epoch += 1
-
-        # Fill for the current block, if applicable
         if t_i == block.timestamp:
             last_point.blk = block.number
-            last_point.fxs_amt = ERC20(self.token).balanceOf(self)
             break
         else:
             self.point_history[_epoch] = last_point
@@ -374,7 +294,7 @@ def _checkpoint(addr: address, old_locked: LockedBalance, new_locked: LockedBala
     self.epoch = _epoch
     # Now point_history is filled until t=now
 
-    if addr != ZERO_ADDRESS:
+    if addr != empty(address):
         # If last point was in this block, the slope change has been applied already
         # But in such case we have 0 slope(s)
         last_point.slope += (u_new.slope - u_old.slope)
@@ -387,7 +307,7 @@ def _checkpoint(addr: address, old_locked: LockedBalance, new_locked: LockedBala
     # Record the changed point into history
     self.point_history[_epoch] = last_point
 
-    if addr != ZERO_ADDRESS:
+    if addr != empty(address):
         # Schedule the slope changes (slope is going down)
         # We subtract new_user_slope from [new_locked.end]
         # and add old_user_slope to [old_locked.end]
@@ -410,7 +330,6 @@ def _checkpoint(addr: address, old_locked: LockedBalance, new_locked: LockedBala
         self.user_point_epoch[addr] = user_epoch
         u_new.ts = block.timestamp
         u_new.blk = block.number
-        u_new.fxs_amt = convert(self.locked[addr].amount, uint256)
         self.user_point_history[addr][user_epoch] = u_new
 
 
@@ -441,7 +360,7 @@ def _deposit_for(_addr: address, _value: uint256, unlock_time: uint256, locked_b
     self._checkpoint(_addr, old_locked, _locked)
 
     if _value != 0:
-        assert ERC20(self.token).transferFrom(_addr, self, _value)
+        assert ERC20(TOKEN).transferFrom(_addr, self, _value)
 
     log Deposit(_addr, _value, _locked.end, type, block.timestamp)
     log Supply(supply_before, supply_before + _value)
@@ -452,7 +371,7 @@ def checkpoint():
     """
     @notice Record global data to checkpoint
     """
-    self._checkpoint(ZERO_ADDRESS, empty(LockedBalance), empty(LockedBalance))
+    self._checkpoint(empty(address), empty(LockedBalance), empty(LockedBalance))
 
 
 @external
@@ -489,7 +408,7 @@ def create_lock(_value: uint256, _unlock_time: uint256):
     assert _value > 0  # dev: need non-zero value
     assert _locked.amount == 0, "Withdraw old tokens first"
     assert unlock_time > block.timestamp, "Can only lock until time in the future"
-    assert unlock_time <= block.timestamp + MAXTIME, "Voting lock can be 4 years max"
+    assert unlock_time <= block.timestamp + MAXTIME, "Voting lock can be 1 year max"
 
     self._deposit_for(msg.sender, _value, unlock_time, _locked, CREATE_LOCK_TYPE)
 
@@ -526,7 +445,7 @@ def increase_unlock_time(_unlock_time: uint256):
     assert _locked.end > block.timestamp, "Lock expired"
     assert _locked.amount > 0, "Nothing is locked"
     assert unlock_time > _locked.end, "Can only increase lock duration"
-    assert unlock_time <= block.timestamp + MAXTIME, "Voting lock can be 4 years max"
+    assert unlock_time <= block.timestamp + MAXTIME, "Voting lock can be 1 year max"
 
     self._deposit_for(msg.sender, 0, unlock_time, _locked, INCREASE_UNLOCK_TIME)
 
@@ -539,7 +458,7 @@ def withdraw():
     @dev Only possible if the lock has expired
     """
     _locked: LockedBalance = self.locked[msg.sender]
-    assert ((block.timestamp >= _locked.end) or (self.emergencyUnlockActive)), "The lock didn't expire"
+    assert block.timestamp >= _locked.end, "The lock didn't expire"
     value: uint256 = convert(_locked.amount, uint256)
 
     old_locked: LockedBalance = _locked
@@ -554,7 +473,7 @@ def withdraw():
     # Both can have >= 0 amount
     self._checkpoint(msg.sender, old_locked, _locked)
 
-    assert ERC20(self.token).transfer(msg.sender, value)
+    assert ERC20(TOKEN).transfer(msg.sender, value)
 
     log Withdraw(msg.sender, value, block.timestamp)
     log Supply(supply_before, supply_before - value)
@@ -563,16 +482,15 @@ def withdraw():
 # The following ERC20/minime-compatible methods are not real balanceOf and supply!
 # They measure the weights for the purpose of voting, so they don't represent
 # real coins.
-# FRAX adds minimal 1-1 FXS/veFXS, as well as a voting multiplier
 
 @internal
 @view
 def find_block_epoch(_block: uint256, max_epoch: uint256) -> uint256:
     """
-    @notice Binary search to estimate timestamp for block number
+    @notice Binary search to find epoch containing block number
     @param _block Block to find
     @param max_epoch Don't go beyond this epoch
-    @return Approximate timestamp for block
+    @return Epoch which contains _block
     """
     # Binary search
     _min: uint256 = 0
@@ -587,6 +505,73 @@ def find_block_epoch(_block: uint256, max_epoch: uint256) -> uint256:
             _max = _mid - 1
     return _min
 
+@internal
+@view
+def find_timestamp_epoch(_timestamp: uint256, max_epoch: uint256) -> uint256:
+    """
+    @notice Binary search to find epoch for timestamp
+    @param _timestamp timestamp to find
+    @param max_epoch Don't go beyond this epoch
+    @return Epoch which contains _timestamp
+    """
+    # Binary search
+    _min: uint256 = 0
+    _max: uint256 = max_epoch
+    for i in range(128):  # Will be always enough for 128-bit numbers
+        if _min >= _max:
+            break
+        _mid: uint256 = (_min + _max + 1) / 2
+        if self.point_history[_mid].ts <= _timestamp:
+            _min = _mid
+        else:
+            _max = _mid - 1
+    return _min
+
+@internal
+@view
+def find_block_user_epoch(_addr: address, _block: uint256, max_epoch: uint256) -> uint256:
+    """
+    @notice Binary search to find epoch for block number
+    @param _addr User for which to find user epoch for
+    @param _block Block to find
+    @param max_epoch Don't go beyond this epoch
+    @return Epoch which contains _block
+    """
+    # Binary search
+    _min: uint256 = 0
+    _max: uint256 = max_epoch
+    for i in range(128):  # Will be always enough for 128-bit numbers
+        if _min >= _max:
+            break
+        _mid: uint256 = (_min + _max + 1) / 2
+        if self.user_point_history[_addr][_mid].blk <= _block:
+            _min = _mid
+        else:
+            _max = _mid - 1
+    return _min
+
+@internal
+@view
+def find_timestamp_user_epoch(_addr: address, _timestamp: uint256, max_epoch: uint256) -> uint256:
+    """
+    @notice Binary search to find user epoch for timestamp
+    @param _addr User for which to find user epoch for
+    @param _timestamp timestamp to find
+    @param max_epoch Don't go beyond this epoch
+    @return Epoch which contains _timestamp
+    """
+    # Binary search
+    _min: uint256 = 0
+    _max: uint256 = max_epoch
+    for i in range(128):  # Will be always enough for 128-bit numbers
+        if _min >= _max:
+            break
+        _mid: uint256 = (_min + _max + 1) / 2
+        if self.user_point_history[_addr][_mid].ts <= _timestamp:
+            _min = _mid
+        else:
+            _max = _mid - 1
+    return _min
 
 @external
 @view
@@ -598,7 +583,13 @@ def balanceOf(addr: address, _t: uint256 = block.timestamp) -> uint256:
     @param _t Epoch time to return voting power at
     @return User voting power
     """
-    _epoch: uint256 = self.user_point_epoch[addr]
+    _epoch: uint256 = 0
+    if _t == block.timestamp:
+        # No need to do binary search, will always live in current epoch
+        _epoch = self.user_point_epoch[addr]
+    else:
+        _epoch = self.find_timestamp_user_epoch(addr, _t, self.user_point_epoch[addr])
+
     if _epoch == 0:
         return 0
     else:
@@ -606,10 +597,7 @@ def balanceOf(addr: address, _t: uint256 = block.timestamp) -> uint256:
         last_point.bias -= last_point.slope * convert(_t - last_point.ts, int128)
         if last_point.bias < 0:
             last_point.bias = 0
-
-        unweighted_supply: uint256 = convert(last_point.bias, uint256) # Original from veCRV
-        weighted_supply: uint256 = last_point.fxs_amt + (VOTE_WEIGHT_MULTIPLIER * unweighted_supply)
-        return weighted_supply
+        return convert(last_point.bias, uint256)
 
 
 @external
@@ -626,19 +614,8 @@ def balanceOfAt(addr: address, _block: uint256) -> uint256:
     # reference yet
     assert _block <= block.number
 
-    # Binary search
-    _min: uint256 = 0
-    _max: uint256 = self.user_point_epoch[addr]
-    for i in range(128):  # Will be always enough for 128-bit numbers
-        if _min >= _max:
-            break
-        _mid: uint256 = (_min + _max + 1) / 2
-        if self.user_point_history[addr][_mid].blk <= _block:
-            _min = _mid
-        else:
-            _max = _mid - 1
-
-    upoint: Point = self.user_point_history[addr][_min]
+    _user_epoch: uint256 = self.find_block_user_epoch(addr, _block, self.user_point_epoch[addr])
+    upoint: Point = self.user_point_history[addr][_user_epoch]
 
     max_epoch: uint256 = self.epoch
     _epoch: uint256 = self.find_block_epoch(_block, max_epoch)
@@ -657,12 +634,8 @@ def balanceOfAt(addr: address, _block: uint256) -> uint256:
         block_time += d_t * (_block - point_0.blk) / d_block
 
     upoint.bias -= upoint.slope * convert(block_time - upoint.ts, int128)
-
-    unweighted_supply: uint256 = convert(upoint.bias, uint256) # Original from veCRV
-    weighted_supply: uint256 = upoint.fxs_amt + (VOTE_WEIGHT_MULTIPLIER * unweighted_supply)
-
-    if ((upoint.bias >= 0) or (upoint.fxs_amt >= 0)):
-        return weighted_supply
+    if upoint.bias >= 0:
+        return convert(upoint.bias, uint256)
     else:
         return 0
 
@@ -693,9 +666,7 @@ def supply_at(point: Point, t: uint256) -> uint256:
 
     if last_point.bias < 0:
         last_point.bias = 0
-    unweighted_supply: uint256 = convert(last_point.bias, uint256) # Original from veCRV
-    weighted_supply: uint256 = last_point.fxs_amt + (VOTE_WEIGHT_MULTIPLIER * unweighted_supply)
-    return weighted_supply
+    return convert(last_point.bias, uint256)
 
 
 @external
@@ -706,9 +677,18 @@ def totalSupply(t: uint256 = block.timestamp) -> uint256:
     @dev Adheres to the ERC20 `totalSupply` interface for Aragon compatibility
     @return Total voting power
     """
-    _epoch: uint256 = self.epoch
-    last_point: Point = self.point_history[_epoch]
-    return self.supply_at(last_point, t)
+    _epoch: uint256 = 0
+    if t == block.timestamp:
+        # No need to do binary search, will always live in current epoch
+        _epoch = self.epoch
+    else:
+        _epoch = self.find_timestamp_epoch(t, self.epoch)
+
+    if _epoch == 0:
+        return 0
+    else:
+        last_point: Point = self.point_history[_epoch]
+        return self.supply_at(last_point, t)
 
 
 @external
@@ -735,37 +715,3 @@ def totalSupplyAt(_block: uint256) -> uint256:
     # Now dt contains info on how far are we beyond point
 
     return self.supply_at(point, point.ts + dt)
-
-# Dummy methods for compatibility with Aragon
-
-@external
-@view
-def totalFXSSupply() -> uint256:
-    """
-    @notice Calculate FXS supply
-    @dev Adheres to the ERC20 `totalSupply` interface for Aragon compatibility
-    @return Total FXS supply
-    """
-    return ERC20(self.token).balanceOf(self)
-
-@external
-@view
-def totalFXSSupplyAt(_block: uint256) -> uint256:
-    """
-    @notice Calculate total FXS at some point in the past
-    @param _block Block to calculate the total voting power at
-    @return Total FXS supply at `_block`
-    """
-    assert _block <= block.number
-    _epoch: uint256 = self.epoch
-    target_epoch: uint256 = self.find_block_epoch(_block, _epoch)
-    point: Point = self.point_history[target_epoch]
-    return point.fxs_amt
-
-@external
-def changeController(_newController: address):
-    """
-    @dev Dummy method required for Aragon compatibility
-    """
-    assert msg.sender == self.controller
-    self.controller = _newController

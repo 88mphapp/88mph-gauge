@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-pragma solidity >=0.6.11;
+pragma solidity ^0.8.0;
 
 // ====================================================================
 // |     ______                   _______                             |
@@ -23,19 +23,16 @@ pragma solidity >=0.6.11;
 // Jason Huan: https://github.com/jasonhuan
 // Sam Kazemian: https://github.com/samkazemian
 
-import "../Math/Math.sol";
-import "../Math/SafeMath.sol";
-import "../ERC20/ERC20.sol";
-import "../ERC20/SafeERC20.sol";
+import {ERC20} from "solmate/src/tokens/ERC20.sol";
+import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
+import {ReentrancyGuard} from "solmate/src/utils/ReentrancyGuard.sol";
+
 import "./IMPHGaugeController.sol";
-import "./MPHMiddlemanGauge.sol";
-import "../Uniswap/TransferHelper.sol";
+import {MPHMiddlemanGauge} from "./MPHMiddlemanGauge.sol";
 import "../Staking/Owned.sol";
-import "../Utils/ReentrancyGuard.sol";
 
 contract MPHGaugeRewardsDistributor is Owned, ReentrancyGuard {
-    using SafeMath for uint256;
-    using SafeERC20 for ERC20;
+    using SafeTransferLib for ERC20;
 
     /* ========== STATE VARIABLES ========== */
 
@@ -62,12 +59,20 @@ contract MPHGaugeRewardsDistributor is Owned, ReentrancyGuard {
     /* ========== MODIFIERS ========== */
 
     modifier onlyByOwnGov() {
-        require(msg.sender == owner || msg.sender == timelock_address, "Not owner or timelock");
+        require(
+            msg.sender == owner || msg.sender == timelock_address,
+            "Not owner or timelock"
+        );
         _;
     }
 
     modifier onlyByOwnerOrCuratorOrGovernance() {
-        require(msg.sender == owner || msg.sender == curator_address || msg.sender == timelock_address, "Not owner, curator, or timelock");
+        require(
+            msg.sender == owner ||
+                msg.sender == curator_address ||
+                msg.sender == timelock_address,
+            "Not owner, curator, or timelock"
+        );
         _;
     }
 
@@ -78,7 +83,7 @@ contract MPHGaugeRewardsDistributor is Owned, ReentrancyGuard {
 
     /* ========== CONSTRUCTOR ========== */
 
-    constructor (
+    constructor(
         address _owner,
         address _timelock_address,
         address _curator_address,
@@ -92,34 +97,47 @@ contract MPHGaugeRewardsDistributor is Owned, ReentrancyGuard {
         gauge_controller = IMPHGaugeController(_gauge_controller_address);
 
         distributionsOn = true;
-
     }
 
     /* ========== VIEWS ========== */
 
     // Current weekly reward amount
-    function currentReward(address gauge_address) public view returns (uint256 reward_amount) {
-        uint256 rel_weight = gauge_controller.gauge_relative_weight(gauge_address, block.timestamp);
-        uint256 rwd_rate = (gauge_controller.global_emission_rate()).mul(rel_weight).div(1e18);
-        reward_amount = rwd_rate.mul(ONE_WEEK);
+    function currentReward(address gauge_address)
+        public
+        view
+        returns (uint256 reward_amount)
+    {
+        uint256 rel_weight = gauge_controller.gauge_relative_weight(
+            gauge_address,
+            block.timestamp
+        );
+        uint256 rwd_rate = ((gauge_controller.global_emission_rate()) *
+            rel_weight) / 1e18;
+        reward_amount = rwd_rate * ONE_WEEK;
     }
 
     /* ========== MUTATIVE FUNCTIONS ========== */
 
     // Callable by anyone
-    function distributeReward(address gauge_address) public isDistributing nonReentrant returns (uint256 weeks_elapsed, uint256 reward_tally) {
+    function distributeReward(address gauge_address)
+        public
+        isDistributing
+        nonReentrant
+        returns (uint256 weeks_elapsed, uint256 reward_tally)
+    {
         require(gauge_whitelist[gauge_address], "Gauge not whitelisted");
-        
-        // Calculate the elapsed time in weeks. 
+
+        // Calculate the elapsed time in weeks.
         uint256 last_time_paid = last_time_gauge_paid[gauge_address];
 
         // Edge case for first reward for this gauge
-        if (last_time_paid == 0){
+        if (last_time_paid == 0) {
             weeks_elapsed = 1;
-        }
-        else {
+        } else {
             // Truncation desired
-            weeks_elapsed = (block.timestamp).sub(last_time_gauge_paid[gauge_address]) / ONE_WEEK;
+            weeks_elapsed =
+                (block.timestamp - last_time_gauge_paid[gauge_address]) /
+                ONE_WEEK;
 
             // Return early here for 0 weeks instead of throwing, as it could have bad effects in other contracts
             if (weeks_elapsed == 0) {
@@ -129,34 +147,43 @@ contract MPHGaugeRewardsDistributor is Owned, ReentrancyGuard {
 
         // NOTE: This will always use the current global_emission_rate()
         reward_tally = 0;
-        for (uint i = 0; i < (weeks_elapsed); i++){ 
+        for (uint256 i = 0; i < (weeks_elapsed); i++) {
             uint256 rel_weight_at_week;
             if (i == 0) {
                 // Mutative, for the current week. Makes sure the weight is checkpointed. Also returns the weight.
-                rel_weight_at_week = gauge_controller.gauge_relative_weight_write(gauge_address, block.timestamp);
-            }
-            else {
+                rel_weight_at_week = gauge_controller
+                    .gauge_relative_weight_write(
+                        gauge_address,
+                        block.timestamp
+                    );
+            } else {
                 // View
-                rel_weight_at_week = gauge_controller.gauge_relative_weight(gauge_address, (block.timestamp).sub(ONE_WEEK * i));
+                rel_weight_at_week = gauge_controller.gauge_relative_weight(
+                    gauge_address,
+                    block.timestamp - (ONE_WEEK * i)
+                );
             }
-            uint256 rwd_rate_at_week = (gauge_controller.global_emission_rate()).mul(rel_weight_at_week).div(1e18);
-            reward_tally = reward_tally.add(rwd_rate_at_week.mul(ONE_WEEK));
+            uint256 rwd_rate_at_week = (gauge_controller
+                .global_emission_rate() * rel_weight_at_week) / 1e18;
+            reward_tally = reward_tally + rwd_rate_at_week * ONE_WEEK;
         }
 
         // Update the last time paid
         last_time_gauge_paid[gauge_address] = block.timestamp;
 
-        if (is_middleman[gauge_address]){
+        if (is_middleman[gauge_address]) {
             // Cross chain: Pay out the rewards to the middleman contract
             // Approve for the middleman first
             ERC20(reward_token_address).approve(gauge_address, reward_tally);
 
             // Trigger the middleman
             MPHMiddlemanGauge(gauge_address).pullAndBridge(reward_tally);
-        }
-        else {
+        } else {
             // Mainnet: Pay out the rewards directly to the gauge
-            TransferHelper.safeTransfer(reward_token_address, gauge_address, reward_tally);
+            ERC20(reward_token_address).safeTransfer(
+                gauge_address,
+                reward_tally
+            );
         }
 
         emit RewardDistributed(gauge_address, reward_tally);
@@ -172,15 +199,22 @@ contract MPHGaugeRewardsDistributor is Owned, ReentrancyGuard {
     }
 
     /* ========== RESTRICTED FUNCTIONS - Owner or timelock only ========== */
-    
+
     // Added to support recovering LP Rewards and other mistaken tokens from other systems to be distributed to holders
-    function recoverERC20(address tokenAddress, uint256 tokenAmount) external onlyByOwnGov {
+    function recoverERC20(address tokenAddress, uint256 tokenAmount)
+        external
+        onlyByOwnGov
+    {
         // Only the owner address can ever receive the recovery withdrawal
-        TransferHelper.safeTransfer(tokenAddress, owner, tokenAmount);
+        ERC20(tokenAddress).safeTransfer(owner, tokenAmount);
         emit RecoveredERC20(tokenAddress, tokenAmount);
     }
 
-    function setGaugeState(address _gauge_address, bool _is_middleman, bool _is_active) external onlyByOwnGov {
+    function setGaugeState(
+        address _gauge_address,
+        bool _is_middleman,
+        bool _is_active
+    ) external onlyByOwnGov {
         is_middleman[_gauge_address] = _is_middleman;
         gauge_whitelist[_gauge_address] = _is_active;
 
@@ -195,14 +229,24 @@ contract MPHGaugeRewardsDistributor is Owned, ReentrancyGuard {
         curator_address = _new_curator_address;
     }
 
-    function setGaugeController(address _gauge_controller_address) external onlyByOwnGov {
+    function setGaugeController(address _gauge_controller_address)
+        external
+        onlyByOwnGov
+    {
         gauge_controller = IMPHGaugeController(_gauge_controller_address);
     }
 
     /* ========== EVENTS ========== */
 
-    event RewardDistributed(address indexed gauge_address, uint256 reward_amount);
+    event RewardDistributed(
+        address indexed gauge_address,
+        uint256 reward_amount
+    );
     event RecoveredERC20(address token, uint256 amount);
-    event GaugeStateChanged(address gauge_address, bool is_middleman, bool is_active);
+    event GaugeStateChanged(
+        address gauge_address,
+        bool is_middleman,
+        bool is_active
+    );
     event DistributionsToggled(bool distibutions_state);
 }
