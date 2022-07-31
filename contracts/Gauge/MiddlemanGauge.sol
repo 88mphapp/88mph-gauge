@@ -1,46 +1,22 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.0;
 
-// ====================================================================
-// |     ______                   _______                             |
-// |    / _____________ __  __   / ____(_____  ____ _____  ________   |
-// |   / /_  / ___/ __ `| |/_/  / /_  / / __ \/ __ `/ __ \/ ___/ _ \  |
-// |  / __/ / /  / /_/ _>  <   / __/ / / / / / /_/ / / / / /__/  __/  |
-// | /_/   /_/   \__,_/_/|_|  /_/   /_/_/ /_/\__,_/_/ /_/\___/\___/   |
-// |                                                                  |
-// ====================================================================
-// ======================== FraxMiddlemanGauge ========================
-// ====================================================================
-// Looks at the gauge controller contract and pushes out FXS rewards once
-// a week to the gauges (farms).
-// This contract is what gets added to the gauge as a 'slice'
-
-// Frax Finance: https://github.com/FraxFinance
-
-// Primary Author(s)
-// Travis Moore: https://github.com/FortisFortuna
-
-// Reviewer(s) / Contributor(s)
-// Jason Huan: https://github.com/jasonhuan
-// Sam Kazemian: https://github.com/samkazemian
-
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {ReentrancyGuard} from "solmate/src/utils/ReentrancyGuard.sol";
 
-import "./IMPHGaugeRewardsDistributor.sol";
+import "./IGaugeRewardsDistributor.sol";
 import "../Misc_AMOs/harmony/IERC20EthManager.sol";
 import "../Misc_AMOs/polygon/IRootChainManager.sol";
 import "../Misc_AMOs/solana/IWormhole.sol";
 import "../Staking/Owned.sol";
 
-contract MPHMiddlemanGauge is Owned, ReentrancyGuard {
+contract MiddlemanGauge is Owned, ReentrancyGuard {
     using SafeTransferLib for ERC20;
 
-    address public constant reward_token_address =
-        0x8888801aF4d980682e47f1A9036e589479e835C5; // MPH
-
     /* ========== STATE VARIABLES ========== */
+
+    address public immutable reward_token_address;
 
     // Instances and addresses
     address public rewards_distributor_address;
@@ -82,6 +58,7 @@ contract MPHMiddlemanGauge is Owned, ReentrancyGuard {
 
     constructor(
         address _owner,
+        address _reward_token_address,
         address _timelock_address,
         address _rewards_distributor_address,
         address _bridge_address,
@@ -90,6 +67,7 @@ contract MPHMiddlemanGauge is Owned, ReentrancyGuard {
         string memory _non_evm_destination_address,
         string memory _name
     ) Owned(_owner) {
+        reward_token_address = _reward_token_address;
         timelock_address = _timelock_address;
 
         rewards_distributor_address = _rewards_distributor_address;
@@ -100,8 +78,6 @@ contract MPHMiddlemanGauge is Owned, ReentrancyGuard {
         non_evm_destination_address = _non_evm_destination_address;
 
         name = _name;
-
-        fake_nonce = 0;
     }
 
     /* ========== MUTATIVE FUNCTIONS ========== */
@@ -198,7 +174,7 @@ contract MPHMiddlemanGauge is Owned, ReentrancyGuard {
             );
         }
 
-        fake_nonce += 1;
+        // fake_nonce += 1;
     }
 
     /* ========== RESTRICTED FUNCTIONS - Owner or timelock only ========== */

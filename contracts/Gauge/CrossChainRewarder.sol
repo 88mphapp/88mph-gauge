@@ -1,36 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 pragma solidity ^0.8.0;
 
-// ====================================================================
-// |     ______                   _______                             |
-// |    / _____________ __  __   / ____(_____  ____ _____  ________   |
-// |   / /_  / ___/ __ `| |/_/  / /_  / / __ \/ __ `/ __ \/ ___/ _ \  |
-// |  / __/ / /  / /_/ _>  <   / __/ / / / / / /_/ / / / / /__/  __/  |
-// | /_/   /_/   \__,_/_/|_|  /_/   /_/_/ /_/\__,_/_/ /_/\___/\___/   |
-// |                                                                  |
-// ====================================================================
-// ====================== FraxCrossChainRewarder ======================
-// ====================================================================
-// One-to-one relationship with a FraxMiddlemanGauge on the Ethereum mainnet
-// Because some bridges can only bridge to the exact same address on the other chain
-// This accepts bridged FXS rewards and then distributes them to the actual farm on this chain
-
-// Frax Finance: https://github.com/FraxFinance
-
-// Primary Author(s)
-// Travis Moore: https://github.com/FortisFortuna
-
-// Reviewer(s) / Contributor(s)
-// Jason Huan: https://github.com/jasonhuan
-// Sam Kazemian: https://github.com/samkazemian
-
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {ReentrancyGuard} from "solmate/src/utils/ReentrancyGuard.sol";
 
 import "../Staking/Owned.sol";
 
-contract MPHCrossChainRewarder is Owned, ReentrancyGuard {
+contract CrossChainRewarder is Owned, ReentrancyGuard {
     using SafeTransferLib for ERC20;
 
     /* ========== STATE VARIABLES ========== */
