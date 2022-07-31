@@ -1,10 +1,8 @@
 const config = require("../../configs/config.json");
 
-module.exports = async ({ deployments, getNamedAccounts, getChainId }) => {
-  const { deploy, log } = deployments;
-  const { deployer, owner } = await getNamedAccounts();
-
-  const chainId = await getChainId();
+module.exports = async ({ deployments, getNamedAccounts }) => {
+  const { deploy } = deployments;
+  const { deployer } = await getNamedAccounts();
 
   const gaugeController = await deployments.get("GaugeController");
 

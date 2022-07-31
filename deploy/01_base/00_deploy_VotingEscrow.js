@@ -1,9 +1,8 @@
 const config = require("../../configs/config.json");
 
-module.exports = async ({ deployments, getNamedAccounts, getChainId }) => {
-  const { deploy, log } = deployments;
+module.exports = async ({ deployments, getNamedAccounts }) => {
+  const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
-  const chainId = await getChainId();
 
   const deployResult = await deploy("VotingEscrow", {
     from: deployer,

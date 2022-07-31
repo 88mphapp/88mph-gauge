@@ -1,1 +1,1 @@
-npx hardhat --network mainnet deploy --tags GaugeRewardsDistributor 
+npx hardhat --network mainnet deploy --tags GaugeRewardsDistributor,FeeDistributor

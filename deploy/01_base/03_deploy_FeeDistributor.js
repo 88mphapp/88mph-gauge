@@ -6,11 +6,12 @@ module.exports = async ({ deployments, getNamedAccounts }) => {
 
   const votingEscrow = await deployments.get("VotingEscrow");
 
-  const deployResult = await deploy("GaugeController", {
+  const deployResult = await deploy("FeeDistributor", {
     from: deployer,
     log: true,
-    args: [votingEscrow.address, config.owner],
+    args: [votingEscrow.address, config.startTime],
   });
 };
-module.exports.tags = ["GaugeController"];
+
+module.exports.tags = ["FeeDistributor"];
 module.exports.dependencies = ["VotingEscrow"];
