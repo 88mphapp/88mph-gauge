@@ -8,5 +8,6 @@
     "name": "Vote-escrowed MPH",
     "symbol": "veMPH"
   },
-  "startTime": 1659898800
+  "startTime": 1659898800,
+  "globalEmissionRate": 0
 }

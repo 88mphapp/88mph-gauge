@@ -15,6 +15,7 @@ module.exports = async ({ deployments, getNamedAccounts }) => {
       config.curator,
       config.rewardToken,
       gaugeController.address,
+      config.globalEmissionRate,
     ],
   });
 };

@@ -34,6 +34,9 @@ contract GaugeRewardsDistributor is Owned, ReentrancyGuard {
     // Booleans
     bool public distributionsOn;
 
+    // Uints
+    uint256 public global_emission_rate;
+
     /* ========== MODIFIERS ========== */
 
     modifier onlyByOwnGov() {
@@ -66,7 +69,8 @@ contract GaugeRewardsDistributor is Owned, ReentrancyGuard {
         address _timelock_address,
         address _curator_address,
         address _reward_token_address,
-        address _gauge_controller_address
+        address _gauge_controller_address,
+        uint256 _global_emission_rate
     ) Owned(_owner) {
         curator_address = _curator_address;
         timelock_address = _timelock_address;
@@ -75,6 +79,8 @@ contract GaugeRewardsDistributor is Owned, ReentrancyGuard {
         gauge_controller = IGaugeController(_gauge_controller_address);
 
         distributionsOn = true;
+
+        global_emission_rate = _global_emission_rate;
     }
 
     /* ========== VIEWS ========== */
@@ -89,8 +95,7 @@ contract GaugeRewardsDistributor is Owned, ReentrancyGuard {
             gauge_address,
             block.timestamp
         );
-        uint256 rwd_rate = ((gauge_controller.global_emission_rate()) *
-            rel_weight) / 1e18;
+        uint256 rwd_rate = (global_emission_rate * rel_weight) / 1e18;
         reward_amount = rwd_rate * ONE_WEEK;
     }
 
@@ -141,8 +146,8 @@ contract GaugeRewardsDistributor is Owned, ReentrancyGuard {
                     block.timestamp - (ONE_WEEK * i)
                 );
             }
-            uint256 rwd_rate_at_week = (gauge_controller
-                .global_emission_rate() * rel_weight_at_week) / 1e18;
+            uint256 rwd_rate_at_week = (global_emission_rate *
+                rel_weight_at_week) / 1e18;
             reward_tally = reward_tally + rwd_rate_at_week * ONE_WEEK;
         }
 
@@ -212,6 +217,13 @@ contract GaugeRewardsDistributor is Owned, ReentrancyGuard {
         onlyByOwnGov
     {
         gauge_controller = IGaugeController(_gauge_controller_address);
+    }
+
+    function setGlobalEmissionRate(uint256 _global_emission_rate)
+        external
+        onlyByOwnGov
+    {
+        global_emission_rate = _global_emission_rate;
     }
 
     /* ========== EVENTS ========== */

@@ -18,8 +18,6 @@ interface IGaugeController {
     // Public variables
     function admin() external view returns (address);
 
-    function future_admin() external view returns (address);
-
     function token() external view returns (address);
 
     function voting_escrow() external view returns (address);
@@ -82,10 +80,6 @@ interface IGaugeController {
     function get_weights_sum_per_type(int128) external view returns (uint256);
 
     // External functions
-    function commit_transfer_ownership(address) external;
-
-    function apply_transfer_ownership() external;
-
     function add_gauge(
         address,
         int128,
@@ -95,8 +89,6 @@ interface IGaugeController {
     function checkpoint() external;
 
     function checkpoint_gauge(address) external;
-
-    function global_emission_rate() external view returns (uint256);
 
     function gauge_relative_weight_write(address) external returns (uint256);
 
@@ -109,8 +101,6 @@ interface IGaugeController {
     function change_type_weight(int128, uint256) external;
 
     function change_gauge_weight(address, uint256) external;
-
-    function change_global_emission_rate(uint256) external;
 
     function vote_for_gauge_weights(address, uint256) external;
 }
